@@ -346,6 +346,11 @@ Examples:
         action='store_true',
         help='Enable verbose logging'
     )
+    parser.add_argument(
+        '--master',
+        action='store_true',
+        help='Enable master mode with downward detection and IMU integration'
+    )
 
     args = parser.parse_args()
 
@@ -360,7 +365,8 @@ Examples:
             port=args.port,
             fps=args.fps,
             save_local=args.save_local,
-            csv_file=args.csv
+            csv_file=args.csv,
+            master=args.master, 
         )
         client.run()
     except Exception as e:
