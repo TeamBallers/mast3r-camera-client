@@ -11,6 +11,7 @@ Usage:
 """
 
 import argparse
+import csv
 import io
 import logging
 import sys
@@ -44,7 +45,7 @@ logger = logging.getLogger(__name__)
 class CameraClient:
     """Client for capturing and uploading camera images."""
 
-    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False):
+    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, csv_file: bool = False):
         """
         Initialize camera client.
 
@@ -53,18 +54,30 @@ class CameraClient:
             port: Port number of MASt3R-SLAM server
             fps: Frames per second to capture (default: 1.0)
             save_local: Save images locally as well (default: False)
+            csv_file: Flag to enable CSV file for timing data (default: None)
         """
         self.host = host
         self.port = port
         self.fps = fps
         self.interval = 1.0 / fps
         self.save_local = save_local
+        self.csv_file = csv_file
         self.upload_url = f"http://{host}:{port}/upload"
 
         # Create local save directory if needed
         if self.save_local:
             self.save_dir = Path("captured_images")
             self.save_dir.mkdir(exist_ok=True)
+
+        # Initialize CSV writer if enabled
+        if self.csv_file:
+            self.csv_file_obj = open('timings.csv', 'w', newline='')
+            self.csv_writer = csv.writer(self.csv_file_obj)
+            self.csv_writer.writerow(['frame', 'capture_time', 'upload_time', 'total_time', 'size_bytes'])
+            logger.info(f"Timing data will be written to timings.csv")
+        else:
+            self.csv_file_obj = None
+            self.csv_writer = None
 
         # Initialize camera
         logger.info("Initializing Raspberry Pi Camera Module 3...")
@@ -203,6 +216,10 @@ class CameraClient:
 
                 print(f"Frame {frame_count}: capture={capture_time:.3f}s, upload={upload_time:.3f}s, total={elapsed:.3f}s, size={len(jpeg_bytes)}B")
 
+                # Write to CSV if enabled
+                if self.csv_writer:
+                    self.csv_writer.writerow([frame_count, f"{capture_time:.3f}", f"{upload_time:.3f}", f"{elapsed:.3f}", len(jpeg_bytes)])
+
                 if sleep_time > 0:
                     time.sleep(sleep_time)
                 else:
@@ -224,6 +241,8 @@ class CameraClient:
         if hasattr(self, 'camera'):
             self.camera.stop()
             self.camera.close()
+        if self.csv_file_obj:
+            self.csv_file_obj.close()
         logger.info("Camera client stopped")
 
 
@@ -244,6 +263,9 @@ Examples:
 
   # Save local copies
   python camera_client.py --save-local
+
+  # Write timing data to CSV
+  python camera_client.py --csv
 
   # Verbose logging
   python camera_client.py --verbose
@@ -273,6 +295,11 @@ Examples:
         help='Save images locally as well'
     )
     parser.add_argument(
+        '--csv',
+        action='store_true',
+        help='Write timing data to CSV file (timings.csv)'
+    )
+    parser.add_argument(
         '--verbose',
         action='store_true',
         help='Enable verbose logging'
@@ -290,7 +317,8 @@ Examples:
             host=args.host,
             port=args.port,
             fps=args.fps,
-            save_local=args.save_local
+            save_local=args.save_local,
+            csv_file=args.csv
         )
         client.run()
     except Exception as e:
