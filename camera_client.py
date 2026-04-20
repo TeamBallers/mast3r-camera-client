@@ -179,6 +179,8 @@ class CameraClient:
                     jpeg_bytes, filename = self.capture_and_convert()
                     frame_count += 1
 
+                    capture_time = time.time() - start_time
+
                     # Save local copy if enabled
                     if self.save_local:
                         self.save_local_copy(jpeg_bytes, filename)
@@ -189,6 +191,8 @@ class CameraClient:
                     else:
                         fail_count += 1
 
+                    upload_time = time.time() - start_time - capture_time
+
                 except Exception as e:
                     logger.error(f"Error processing frame: {e}")
                     fail_count += 1
@@ -196,6 +200,8 @@ class CameraClient:
                 # Calculate sleep time to maintain FPS
                 elapsed = time.time() - start_time
                 sleep_time = max(0, self.interval - elapsed)
+
+                print(f"Frame {frame_count}: capture={capture_time:.3f}s, upload={upload_time:.3f}s, total={elapsed:.3f}s, size={len(jpeg_bytes)}B")
 
                 if sleep_time > 0:
                     time.sleep(sleep_time)
