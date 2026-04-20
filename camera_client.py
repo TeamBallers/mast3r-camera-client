@@ -76,7 +76,7 @@ class CameraClient:
                 accel_correction_gain=0.02,
                 accel_trust_tolerance=1.0,
             )
-            self.down_writer = CameraDownWriter(self.down_detector, )
+            self.down_writer = CameraDownWriter(self.down_detector, 5, 6)
             
             i2c = board.I2C()
             self.sensor = ISM330DHCX(i2c) # you can add a second parameter for the address if needed
