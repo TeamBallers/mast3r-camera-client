@@ -18,6 +18,12 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from downward_detector import CameraDownDetector, CameraDownWriter, CameraDownReader
+import numpy as np
+
+import board
+from adafruit_lsm6ds.ism330dhcx import ISM330DHCX
+from adafruit_lsm6ds import AccelRange, GyroRange, Rate
 
 try:
     from picamera2 import Picamera2
@@ -45,7 +51,7 @@ logger = logging.getLogger(__name__)
 class CameraClient:
     """Client for capturing and uploading camera images."""
 
-    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, csv_file: bool = False):
+    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, csv_file: bool = False, master: bool = False):
         """
         Initialize camera client.
 
@@ -63,6 +69,26 @@ class CameraClient:
         self.save_local = save_local
         self.csv_file = csv_file
         self.upload_url = f"http://{host}:{port}/upload"
+        self.master = master
+        if self.master:
+            self.down_detector = CameraDownDetector(
+                facing_down_threshold_deg=50.0,
+                accel_correction_gain=0.02,
+                accel_trust_tolerance=1.0,
+            )
+            self.down_writer = CameraDownWriter(self.down_detector, )
+            
+            i2c = board.I2C()
+            self.sensor = ISM330DHCX(i2c) # you can add a second parameter for the address if needed
+
+            self.sensor.gyro_range = GyroRange.RANGE_4000_DPS # set the gyro range to 4000 dps
+            self.sensor.accelerometer_range = AccelRange.RANGE_2G # set the accel range to 2 g
+
+            self.down_detector.initialize_from_stationary(self.sensor.acceleration)
+            self.last_imu_time = time.monotonic()
+            self.gyro_bias = self.down_detector.calibrate_gyro_bias(self.sensor)
+        else: 
+            self.down_reader = CameraDownReader()
 
         # Create local save directory if needed
         if self.save_local:
@@ -90,6 +116,7 @@ class CameraClient:
                 buffer_count=2
             )
             self.camera.configure(config)
+            self.camera.controls.ExposureTime = 4000  # microseconds
             self.camera.start()
 
             # Give camera time to warm up
@@ -186,6 +213,20 @@ class CameraClient:
         try:
             while True:
                 start_time = time.time()
+
+                downward = False
+                if self.master:
+                    corrected_gyro = tuple(np.array(self.sensor.gyro) - self.gyro_bias)
+                    cur_time = time.monotonic()
+                    cameras = self.down_writer.update(self.sensor.acceleration, corrected_gyro, cur_time - self.last_imu_time)
+                    self.last_imu_time = cur_time
+                    downward = cameras[0]
+                else: 
+                    self.down_reader = CameraDownReader()
+                    downward = self.down_reader.read()
+
+                if downward:
+                    continue  # Skip capture if camera is facing downward
 
                 try:
                     # Capture as JPEG
