@@ -16,6 +16,7 @@ import io
 import logging
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from downward_detector import CameraDownDetector, CameraDownWriter, CameraDownReader
@@ -70,6 +71,11 @@ class CameraClient:
         self.csv_file = csv_file
         self.upload_url = f"http://{host}:{port}/upload"
         self.master = master
+
+        # Thread pool for fire-and-forget uploads (bounded to avoid unbounded
+        # queue growth if the network is slower than the capture rate).
+        self._upload_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="upload")
+
         if self.master:
             self.down_detector = CameraDownDetector(
                 facing_down_threshold_deg=50.0,
@@ -77,17 +83,17 @@ class CameraClient:
                 accel_trust_tolerance=1.0,
             )
             self.down_writer = CameraDownWriter(self.down_detector, 5, 6)
-            
-            i2c = board.I2C()
-            self.sensor = ISM330DHCX(i2c) # you can add a second parameter for the address if needed
 
-            self.sensor.gyro_range = GyroRange.RANGE_4000_DPS # set the gyro range to 4000 dps
-            self.sensor.accelerometer_range = AccelRange.RANGE_2G # set the accel range to 2 g
+            i2c = board.I2C()
+            self.sensor = ISM330DHCX(i2c)
+
+            self.sensor.gyro_range = GyroRange.RANGE_4000_DPS
+            self.sensor.accelerometer_range = AccelRange.RANGE_2G
 
             self.down_detector.initialize_from_stationary(self.sensor.acceleration)
             self.last_imu_time = time.monotonic()
             self.gyro_bias = self.down_detector.calibrate_gyro_bias(self.sensor)
-        else: 
+        else:
             self.down_reader = CameraDownReader()
 
         # Create local save directory if needed
@@ -99,8 +105,8 @@ class CameraClient:
         if self.csv_file:
             self.csv_file_obj = open('timings.csv', 'w', newline='')
             self.csv_writer = csv.writer(self.csv_file_obj)
-            self.csv_writer.writerow(['frame', 'capture_time', 'upload_time', 'total_time', 'size_bytes'])
-            logger.info(f"Timing data will be written to timings.csv")
+            self.csv_writer.writerow(['frame', 'capture_time', 'submit_time', 'size_bytes'])
+            logger.info("Timing data will be written to timings.csv")
         else:
             self.csv_file_obj = None
             self.csv_writer = None
@@ -110,16 +116,14 @@ class CameraClient:
         try:
             self.camera = Picamera2()
 
-            # Configure camera for still capture
             config = self.camera.create_still_configuration(
-                main={"size": (4608, 2592)},  # Camera Module 3 max resolution
+                main={"size": (4608, 2592)},
                 buffer_count=2
             )
             self.camera.configure(config)
             self.camera.controls.ExposureTime = 4000  # microseconds
             self.camera.start()
 
-            # Give camera time to warm up
             time.sleep(2)
 
             logger.info("Camera initialized successfully")
@@ -129,7 +133,6 @@ class CameraClient:
             logger.error(f"Failed to initialize camera: {e}")
             raise
 
-        # Test connection to server
         self._test_connection()
 
     def _test_connection(self):
@@ -154,24 +157,23 @@ class CameraClient:
         Returns:
             Tuple of (jpeg_bytes, filename)
         """
-        # Capture image directly as JPEG
         jpeg_buffer = io.BytesIO()
         self.camera.capture_file(jpeg_buffer, format='jpeg')
         jpeg_bytes = jpeg_buffer.getvalue()
 
-        # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"raspi_cam_{timestamp}.jpg"
 
         return jpeg_bytes, filename
 
-    def upload_image(self, jpeg_bytes: bytes, filename: str) -> bool:
-        """
-        Upload JPEG image to MASt3R-SLAM server.
+    # ------------------------------------------------------------------
+    # Fire-and-forget upload
+    # ------------------------------------------------------------------
 
-        Args:
-            jpeg_bytes: JPEG image as bytes
-            filename: Filename for the image
+    def _do_upload(self, jpeg_bytes: bytes, filename: str) -> bool:
+        """
+        Perform the actual HTTP POST.  Runs in a worker thread — never call
+        directly from the main loop.
 
         Returns:
             True if upload successful, False otherwise
@@ -193,6 +195,29 @@ class CameraClient:
             logger.error(f"✗ Upload failed: {e}")
             return False
 
+    def _upload_callback(self, future, filename: str):
+        """Called automatically when an upload future completes."""
+        try:
+            success = future.result()
+            if not success:
+                logger.warning(f"Upload reported failure for {filename}")
+        except Exception as e:
+            logger.error(f"Upload raised an exception for {filename}: {e}")
+
+    def upload_image(self, jpeg_bytes: bytes, filename: str):
+        """
+        Submit an upload task to the thread pool and return immediately.
+        The upload runs in the background; results are logged via callback.
+
+        Args:
+            jpeg_bytes: JPEG image as bytes
+            filename: Filename for the image
+        """
+        future = self._upload_executor.submit(self._do_upload, jpeg_bytes, filename)
+        future.add_done_callback(lambda f: self._upload_callback(f, filename))
+
+    # ------------------------------------------------------------------
+
     def save_local_copy(self, jpeg_bytes: bytes, filename: str):
         """Save local copy of image."""
         save_path = self.save_dir / filename
@@ -207,8 +232,6 @@ class CameraClient:
         logger.info("Press Ctrl+C to stop")
 
         frame_count = 0
-        success_count = 0
-        fail_count = 0
 
         try:
             while True:
@@ -221,70 +244,78 @@ class CameraClient:
                     cameras = self.down_writer.update(self.sensor.acceleration, corrected_gyro, cur_time - self.last_imu_time)
                     self.last_imu_time = cur_time
                     downward = cameras[0]
-                else: 
+                else:
                     self.down_reader = CameraDownReader()
                     downward = self.down_reader.read()
 
                 if downward:
                     print("Camera facing downward, skipping capture")
-                    continue  # Skip capture if camera is facing downward
+                    continue
 
                 try:
-                    # Capture as JPEG
                     jpeg_bytes, filename = self.capture_and_convert()
                     frame_count += 1
 
                     capture_time = time.time() - start_time
 
-                    # Save local copy if enabled
                     if self.save_local:
                         self.save_local_copy(jpeg_bytes, filename)
 
-                    # Upload to server
-                    if self.upload_image(jpeg_bytes, filename):
-                        success_count += 1
-                    else:
-                        fail_count += 1
+                    # Submit upload — returns immediately, worker runs in background
+                    self.upload_image(jpeg_bytes, filename)
 
-                    upload_time = time.time() - start_time - capture_time
+                    submit_time = time.time() - start_time - capture_time
 
                 except Exception as e:
                     logger.error(f"Error processing frame: {e}")
-                    fail_count += 1
+                    continue
 
-                # Calculate sleep time to maintain FPS
                 elapsed = time.time() - start_time
-                sleep_time = max(0, self.interval - elapsed)
+                print(
+                    f"Frame {frame_count}: capture={capture_time:.3f}s, "
+                    f"submit={submit_time:.4f}s, size={len(jpeg_bytes)}B"
+                )
 
-                print(f"Frame {frame_count}: capture={capture_time:.3f}s, upload={upload_time:.3f}s, total={elapsed:.3f}s, size={len(jpeg_bytes)}B")
-
-                # Write to CSV if enabled
                 if self.csv_writer:
-                    self.csv_writer.writerow([frame_count, f"{capture_time:.3f}", f"{upload_time:.3f}", f"{elapsed:.3f}", len(jpeg_bytes)])
+                    self.csv_writer.writerow([
+                        frame_count,
+                        f"{capture_time:.3f}",
+                        f"{submit_time:.4f}",
+                        len(jpeg_bytes),
+                    ])
 
+                sleep_time = max(0, self.interval - elapsed)
                 if sleep_time > 0:
                     time.sleep(sleep_time)
                 else:
-                    logger.warning(f"Frame processing took {elapsed:.2f}s, longer than interval {self.interval:.2f}s")
+                    logger.warning(
+                        f"Frame processing took {elapsed:.2f}s, "
+                        f"longer than interval {self.interval:.2f}s"
+                    )
 
         except KeyboardInterrupt:
             logger.info("\nStopping camera client...")
-            logger.info(f"Statistics:")
-            logger.info(f"  Total frames: {frame_count}")
-            logger.info(f"  Successful uploads: {success_count}")
-            logger.info(f"  Failed uploads: {fail_count}")
+            logger.info(f"Total frames captured: {frame_count}")
 
         finally:
             self.cleanup()
 
     def cleanup(self):
-        """Clean up camera resources."""
+        """Clean up camera and thread-pool resources."""
         logger.info("Cleaning up...")
+
+        # Drain any in-flight uploads before closing everything else.
+        logger.info("Waiting for in-flight uploads to finish...")
+        self._upload_executor.shutdown(wait=True)
+        logger.info("Upload executor shut down")
+
         if hasattr(self, 'camera'):
             self.camera.stop()
             self.camera.close()
+
         if self.csv_file_obj:
             self.csv_file_obj.close()
+
         logger.info("Camera client stopped")
 
 
@@ -314,51 +345,26 @@ Examples:
         """
     )
 
-    parser.add_argument(
-        '--host',
-        default='linux-2',
-        help='Hostname or IP of MASt3R-SLAM server (default: linux-2)'
-    )
-    parser.add_argument(
-        '--port',
-        type=int,
-        default=5050,
-        help='Port of MASt3R-SLAM server (default: 5050)'
-    )
-    parser.add_argument(
-        '--fps',
-        type=float,
-        default=1.0,
-        help='Frames per second to capture (default: 1.0)'
-    )
-    parser.add_argument(
-        '--save-local',
-        action='store_true',
-        help='Save images locally as well'
-    )
-    parser.add_argument(
-        '--csv',
-        action='store_true',
-        help='Write timing data to CSV file (timings.csv)'
-    )
-    parser.add_argument(
-        '--verbose',
-        action='store_true',
-        help='Enable verbose logging'
-    )
-    parser.add_argument(
-        '--master',
-        action='store_true',
-        help='Enable master mode with downward detection and IMU integration'
-    )
+    parser.add_argument('--host', default='linux-2',
+                        help='Hostname or IP of MASt3R-SLAM server (default: linux-2)')
+    parser.add_argument('--port', type=int, default=5050,
+                        help='Port of MASt3R-SLAM server (default: 5050)')
+    parser.add_argument('--fps', type=float, default=1.0,
+                        help='Frames per second to capture (default: 1.0)')
+    parser.add_argument('--save-local', action='store_true',
+                        help='Save images locally as well')
+    parser.add_argument('--csv', action='store_true',
+                        help='Write timing data to CSV file (timings.csv)')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Enable verbose logging')
+    parser.add_argument('--master', action='store_true',
+                        help='Enable master mode with downward detection and IMU integration')
 
     args = parser.parse_args()
 
-    # Set logging level
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Create and run client
     try:
         client = CameraClient(
             host=args.host,
