@@ -117,7 +117,7 @@ class CameraClient:
             self.camera = Picamera2()
 
             config = self.camera.create_still_configuration(
-                main={"size": (4608, 2592)},
+                main={"size": (2304, 1296)},
                 buffer_count=2
             )
             self.camera.configure(config)
