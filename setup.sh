@@ -29,7 +29,6 @@ fi
 
 ACTUAL_USER=${SUDO_USER:-$USER}
 USER_HOME=$(eval echo ~$ACTUAL_USER)
-VENV_PATH="$USER_HOME/.venv"
 
 echo -e "${GREEN}================================================${NC}"
 echo -e "${GREEN}MASt3R Camera Client Setup${NC}"
@@ -37,7 +36,6 @@ echo -e "${GREEN}================================================${NC}"
 echo ""
 echo "Installing for user: $ACTUAL_USER"
 echo "Home directory: $USER_HOME"
-echo "Virtualenv path: $VENV_PATH"
 echo ""
 
 # Update package list
@@ -51,7 +49,6 @@ echo -e "${YELLOW}[2/4] Installing system dependencies...${NC}"
 apt install -y \
 python3 \
 python3-pip \
-python3-venv \
 python3-picamera2 \
 libopenblas-dev
 
@@ -65,41 +62,12 @@ echo "Installing libcamera-apps (legacy)..."
 apt install -y libcamera-apps
 fi
 
-# Create virtual environment as the actual user
-
-echo -e "${YELLOW}[3/4] Creating virtual environment...${NC}"
-sudo -u "$ACTUAL_USER" python3 -m venv --system-site-packages "$VENV_PATH"
-
-# Upgrade pip inside venv
-
-sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install --upgrade pip
-
-# Install Python dependencies inside venv
-
 echo -e "${YELLOW}[4/4] Installing Python dependencies...${NC}"
-sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install \
+pip3 install --break-system-packages \ 
 requests \
 adafruit-circuitpython-lsm6ds \
 fastapi \
-uvicorn \
-numpy \
-RPi.GPIO
-
-# Ensure ownership of venv
-
-chown -R "$ACTUAL_USER":"$ACTUAL_USER" "$VENV_PATH"
-
-# Add auto-activation to user's bashrc (if not already present)
-
-BASHRC_FILE="$USER_HOME/.bashrc"
-ACTIVATE_LINE='source ~/.venv/bin/activate'
-
-if ! grep -Fxq "$ACTIVATE_LINE" "$BASHRC_FILE"; then
-echo "$ACTIVATE_LINE" >> "$BASHRC_FILE"
-chown "$ACTUAL_USER":"$ACTUAL_USER" "$BASHRC_FILE"
-fi
-
-# Make script executable (as user)
+uvicorn 
 
 sudo -u "$ACTUAL_USER" chmod +x "$PWD/camera_client.py"
 
@@ -108,12 +76,4 @@ echo -e "${GREEN}================================================${NC}"
 echo -e "${GREEN}Setup Complete!${NC}"
 echo -e "${GREEN}================================================${NC}"
 echo ""
-echo "Virtual environment created at:"
-echo "  $VENV_PATH"
-echo ""
-echo "To activate manually:"
-echo "  source ~/.venv/bin/activate"
-echo ""
-echo "Dependencies installed inside the virtual environment."
-echo "New terminals will auto-activate the venv."
 echo ""
