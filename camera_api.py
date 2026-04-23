@@ -97,8 +97,8 @@ def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=5050,
-        help="Port to run  (default: 5050)"
+        default=5000,
+        help="Port to run on (default: 5000)"
     )
     parser.add_argument(
         "--fps",
