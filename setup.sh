@@ -38,11 +38,11 @@ echo "Home directory: $USER_HOME"
 echo ""
 
 # Update package list
-echo -e "${YELLOW}[1/5] Updating package list...${NC}"
+echo -e "${YELLOW}[1/4] Updating package list...${NC}"
 apt update
 
 # Install system dependencies
-echo -e "${YELLOW}[2/5] Installing system dependencies...${NC}"
+echo -e "${YELLOW}[2/4] Installing system dependencies...${NC}"
 apt install -y \
     python3 \
     python3-pip \
@@ -57,67 +57,26 @@ else
     apt install -y libcamera-apps
 fi
 
-# Install Python dependencies
-echo -e "${YELLOW}[3/5] Installing Python dependencies...${NC}"
-pip3 install --break-system-packages requests
+echo -e "${YELLOW}[3/4] Creating virtual environment...${NC}"
+python3 -m venv ~/.venv
+source ~/.venv/bin/activate
+echo 'source ~/.venv/bin/activate' >> ~/.bashrc
 
-# Copy project files to user's home directory if not already there
-PROJECT_DIR="$USER_HOME/mast3r-camera-client"
-if [ "$PWD" != "$PROJECT_DIR" ]; then
-    echo -e "${YELLOW}[4/5] Copying project files to $PROJECT_DIR...${NC}"
-    mkdir -p "$PROJECT_DIR"
-    cp camera_client.py "$PROJECT_DIR/"
-    cp mast3r-camera.service "$PROJECT_DIR/"
-    chown -R "$ACTUAL_USER:$ACTUAL_USER" "$PROJECT_DIR"
-else
-    echo -e "${YELLOW}[4/5] Project files already in place${NC}"
-fi
+
+# Install Python dependencies
+echo -e "${YELLOW}[4/4] Installing Python dependencies...${NC}"
+pip3 install requests
+pip3 install adafruit-circuitpython-lsm6ds
 
 # Make script executable
-chmod +x "$PROJECT_DIR/camera_client.py"
-
-# Configure systemd service
-echo -e "${YELLOW}[5/5] Configuring systemd service...${NC}"
-
-# Update service file with correct paths
-SERVICE_FILE="/etc/systemd/system/mast3r-camera.service"
-cp "$PROJECT_DIR/mast3r-camera.service" "$SERVICE_FILE"
-
-# Replace jack user with actual user if different
-sed -i "s|User=jack|User=$ACTUAL_USER|g" "$SERVICE_FILE"
-sed -i "s|/home/jack|$USER_HOME|g" "$SERVICE_FILE"
-
-# Reload systemd
-systemctl daemon-reload
-
-# Enable service
-systemctl enable mast3r-camera.service
+chmod +x "./camera_client.py"
 
 echo ""
 echo -e "${GREEN}================================================${NC}"
 echo -e "${GREEN}Setup Complete!${NC}"
 echo -e "${GREEN}================================================${NC}"
 echo ""
-echo "The camera client has been installed and configured to run at startup."
-echo ""
-echo "Commands:"
-echo "  ${GREEN}sudo systemctl start mast3r-camera${NC}    - Start the service now"
-echo "  ${GREEN}sudo systemctl stop mast3r-camera${NC}     - Stop the service"
-echo "  ${GREEN}sudo systemctl status mast3r-camera${NC}   - Check service status"
-echo "  ${GREEN}sudo systemctl restart mast3r-camera${NC}  - Restart the service"
-echo "  ${GREEN}sudo journalctl -u mast3r-camera -f${NC}   - View live logs"
-echo ""
-echo "To test manually:"
-echo "  ${GREEN}cd $PROJECT_DIR${NC}"
-echo "  ${GREEN}python3 camera_client.py${NC}"
-echo ""
-echo "Configuration:"
-echo "  Edit $SERVICE_FILE to change:"
-echo "    - Server hostname (default: linux-2)"
-echo "    - Server port (default: 5050)"
-echo "    - FPS (default: 1)"
-echo ""
-echo -e "${YELLOW}Note: After editing the service file, run:${NC}"
-echo "  ${GREEN}sudo systemctl daemon-reload${NC}"
-echo "  ${GREEN}sudo systemctl restart mast3r-camera${NC}"
+echo "The camera client has been installed and is ready to be run."
+echo "A venv was created at ~/.venv with the necessary Python dependencies."
+echo "The venv will be activated automatically when you open a new terminal session."
 echo ""
