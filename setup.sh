@@ -48,10 +48,10 @@ apt update
 # Install system dependencies
 
 echo -e "${YELLOW}[2/4] Installing system dependencies...${NC}"
-apt install -y 
-python3 
-python3-pip 
-python3-venv 
+apt install -y \
+python3 \
+python3-pip \
+python3-venv \
 python3-picamera2
 
 # Install camera apps (new or legacy)
@@ -76,8 +76,8 @@ sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install --upgrade pip
 # Install Python dependencies inside venv
 
 echo -e "${YELLOW}[4/4] Installing Python dependencies...${NC}"
-sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install 
-requests 
+sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install \
+requests \
 adafruit-circuitpython-lsm6ds
 
 # Ensure ownership of venv
