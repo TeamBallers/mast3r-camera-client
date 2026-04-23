@@ -11,7 +11,6 @@ Usage:
 """
 
 import argparse
-import csv
 import io
 import logging
 import sys
@@ -52,24 +51,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def downsample(jpeg_bytes, scale=1/4.5):
-    img = Image.open(io.BytesIO(jpeg_bytes))
-
-    new_size = (
-        int(img.width * scale),
-        int(img.height * scale),
-    )
-
-    img_small = img.resize(new_size, Image.Resampling.LANCZOS)
-
-    buf = io.BytesIO()
-    img_small.save(buf, format='JPEG')
-    return buf.getvalue()
-
 class CameraClient:
     """Client for capturing and uploading camera images."""
 
-    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, csv_file: bool = False, master: bool = False):
+    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, master: bool = False):
         """
         Initialize camera client.
 
@@ -78,14 +63,13 @@ class CameraClient:
             port: Port number of MASt3R-SLAM server
             fps: Frames per second to capture (default: 1.0)
             save_local: Save images locally as well (default: False)
-            csv_file: Flag to enable CSV file for timing data (default: None)
+            master: Enable IMU control for downward detection (default: False)
         """
         self.host = host
         self.port = port
         self.fps = fps
         self.interval = 1.0 / fps
         self.save_local = save_local
-        self.csv_file = csv_file
         self.upload_url = f"http://{host}:{port}/upload"
         self.master = master
 
@@ -117,16 +101,6 @@ class CameraClient:
         if self.save_local:
             self.save_dir = Path("captured_images")
             self.save_dir.mkdir(exist_ok=True)
-
-        # Initialize CSV writer if enabled
-        if self.csv_file:
-            self.csv_file_obj = open('timings.csv', 'w', newline='')
-            self.csv_writer = csv.writer(self.csv_file_obj)
-            self.csv_writer.writerow(['frame', 'capture_time', 'submit_time', 'size_bytes'])
-            logger.info("Timing data will be written to timings.csv")
-        else:
-            self.csv_file_obj = None
-            self.csv_writer = None
 
         # Initialize camera
         logger.info("Initializing Raspberry Pi Camera Module 3...")
@@ -167,6 +141,24 @@ class CameraClient:
             logger.error(f"Error: {e}")
             logger.warning("Will attempt to upload anyway...")
 
+    def _downsample(self, jpeg_bytes):
+        """
+        Downsample to 512x288
+        """
+        img = Image.open(io.BytesIO(jpeg_bytes))
+        scale = 512 / img.width
+
+        new_size = (
+            int(img.width * scale),
+            int(img.height * scale),
+        )
+
+        img_small = img.resize(new_size, Image.Resampling.LANCZOS)
+
+        buf = io.BytesIO()
+        img_small.save(buf, format='JPEG')
+        return buf.getvalue()
+
     def capture_and_convert(self) -> tuple[bytes, str]:
         """
         Capture image from camera as JPEG (server will convert to PNG).
@@ -178,7 +170,7 @@ class CameraClient:
         self.camera.capture_file(jpeg_buffer, format='jpeg')
         jpeg_bytes = jpeg_buffer.getvalue()
 
-        jpeg_bytes = downsample(jpeg_bytes, 1.0/4.5)
+        jpeg_bytes = self._downsample(jpeg_bytes)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"raspi_cam_{timestamp}.jpg"
