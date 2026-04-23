@@ -180,7 +180,7 @@ class CameraClient:
         jpeg_bytes = jpeg_buffer.getvalue()
 
         if self.downsize != 1.0:
-            jpeg_bytes = downsample(jpeg_bytes, self.downsize)
+            jpeg_bytes = downsample(jpeg_bytes, 1.0/self.downsize)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"raspi_cam_{timestamp}.jpg"
