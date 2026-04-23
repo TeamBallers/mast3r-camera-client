@@ -26,6 +26,23 @@ import board
 from adafruit_lsm6ds.ism330dhcx import ISM330DHCX
 from adafruit_lsm6ds import AccelRange, GyroRange, Rate
 
+from PIL import Image
+import io
+
+def downsample(jpeg_bytes, scale=1/4.5):
+    img = Image.open(io.BytesIO(jpeg_bytes))
+
+    new_size = (
+        int(img.width * scale),
+        int(img.height * scale),
+    )
+
+    img_small = img.resize(new_size, Image.Resampling.LANCZOS)
+
+    buf = io.BytesIO()
+    img_small.save(buf, format='JPEG')
+    return buf.getvalue()
+
 try:
     from picamera2 import Picamera2
     from picamera2.configuration import CameraConfiguration
@@ -52,7 +69,7 @@ logger = logging.getLogger(__name__)
 class CameraClient:
     """Client for capturing and uploading camera images."""
 
-    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, csv_file: bool = False, master: bool = False):
+    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, csv_file: bool = False, master: bool = False, downsize: float = 1.0):
         """
         Initialize camera client.
 
@@ -71,6 +88,7 @@ class CameraClient:
         self.csv_file = csv_file
         self.upload_url = f"http://{host}:{port}/upload"
         self.master = master
+        self.downsize = downsize
 
         # Thread pool for fire-and-forget uploads (bounded to avoid unbounded
         # queue growth if the network is slower than the capture rate).
@@ -160,6 +178,9 @@ class CameraClient:
         jpeg_buffer = io.BytesIO()
         self.camera.capture_file(jpeg_buffer, format='jpeg')
         jpeg_bytes = jpeg_buffer.getvalue()
+
+        if self.downsize != 1.0:
+            jpeg_bytes = downsample(jpeg_bytes, self.downsize)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"raspi_cam_{timestamp}.jpg"
@@ -359,6 +380,8 @@ Examples:
                         help='Enable verbose logging')
     parser.add_argument('--master', action='store_true',
                         help='Enable master mode with downward detection and IMU integration')
+    parser.add_argument('--downsize', type=float, default=1.0,
+                        help='Downsize ratio for uploaded image (default: 1.0, no downsizing)')
 
     args = parser.parse_args()
 
@@ -373,6 +396,7 @@ Examples:
             save_local=args.save_local,
             csv_file=args.csv,
             master=args.master, 
+            downsize=args.downsize,
         )
         client.run()
     except Exception as e:
