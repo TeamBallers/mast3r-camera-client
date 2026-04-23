@@ -27,9 +27,9 @@ from adafruit_lsm6ds import AccelRange, GyroRange, Rate
 
 from PIL import Image
 try:
-    lanczos = PIL.Image.Resampling.LANCZOS
+    lanczos = Image.Resampling.LANCZOS
 except AttributeError:
-    lanczos = PIL.Image.LANCZOS
+    lanczos = Image.LANCZOS
 import io
 
 try:
