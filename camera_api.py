@@ -11,19 +11,10 @@ Usage:
 """
 
 import argparse
-import io
 import subprocess
-import threading
-import time
-from pathlib import Path
-from datetime import datetime
-from typing import Optional
-import glob
-import shutil
 
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import JSONResponse
-from PIL import Image
 import uvicorn
 
 app = FastAPI(title="Camera API Server")
