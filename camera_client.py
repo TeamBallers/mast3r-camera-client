@@ -50,11 +50,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def is_pi_4b():
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read()
+            return "Raspberry Pi 4 Model B" in model
+    except FileNotFoundError:
+        return False
 
 class CameraClient:
     """Client for capturing and uploading camera images."""
 
-    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, master: bool = False):
+    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False):
         """
         Initialize camera client.
 
@@ -71,7 +78,11 @@ class CameraClient:
         self.interval = 1.0 / fps
         self.save_local = save_local
         self.upload_url = f"http://{host}:{port}/upload"
-        self.master = master
+        self.master = False 
+
+        if is_pi_4b():
+            self.master = True
+            print("Running on Raspberry Pi 4B - enabling master mode with IMU integration")
 
         # Thread pool for fire-and-forget uploads (bounded to avoid unbounded
         # queue growth if the network is slower than the capture rate).
@@ -287,14 +298,6 @@ class CameraClient:
                     f"submit={submit_time:.4f}s, size={len(jpeg_bytes)}B"
                 )
 
-                if self.csv_writer:
-                    self.csv_writer.writerow([
-                        frame_count,
-                        f"{capture_time:.3f}",
-                        f"{submit_time:.4f}",
-                        len(jpeg_bytes),
-                    ])
-
                 sleep_time = max(0, self.interval - elapsed)
                 if sleep_time > 0:
                     time.sleep(sleep_time)
@@ -324,9 +327,6 @@ class CameraClient:
             self.camera.stop()
             self.camera.close()
 
-        if self.csv_file_obj:
-            self.csv_file_obj.close()
-
         logger.info("Camera client stopped")
 
 
@@ -348,9 +348,6 @@ Examples:
   # Save local copies
   python camera_client.py --save-local
 
-  # Write timing data to CSV
-  python camera_client.py --csv
-
   # Verbose logging
   python camera_client.py --verbose
         """
@@ -364,12 +361,8 @@ Examples:
                         help='Frames per second to capture (default: 1.0)')
     parser.add_argument('--save-local', action='store_true',
                         help='Save images locally as well')
-    parser.add_argument('--csv', action='store_true',
-                        help='Write timing data to CSV file (timings.csv)')
     parser.add_argument('--verbose', action='store_true',
                         help='Enable verbose logging')
-    parser.add_argument('--master', action='store_true',
-                        help='Enable master mode with downward detection and IMU integration')
 
     args = parser.parse_args()
 
@@ -382,8 +375,6 @@ Examples:
             port=args.port,
             fps=args.fps,
             save_local=args.save_local,
-            csv_file=args.csv,
-            master=args.master, 
         )
         client.run()
     except Exception as e:
