@@ -26,6 +26,10 @@ from adafruit_lsm6ds.ism330dhcx import ISM330DHCX
 from adafruit_lsm6ds import AccelRange, GyroRange, Rate
 
 from PIL import Image
+try:
+    lanczos = PIL.Image.Resampling.LANCZOS
+except AttributeError:
+    lanczos = PIL.Image.LANCZOS
 import io
 
 try:
@@ -163,7 +167,7 @@ class CameraClient:
             int(img.height * scale),
         )
 
-        img_small = img.resize(new_size, Image.Resampling.LANCZOS)
+        img_small = img.resize(new_size, lanczos)
 
         buf = io.BytesIO()
         img_small.save(buf, format='JPEG')
