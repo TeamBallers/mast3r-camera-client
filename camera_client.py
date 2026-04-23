@@ -70,7 +70,6 @@ class CameraClient:
             port: Port number of MASt3R-SLAM server
             fps: Frames per second to capture (default: 1.0)
             save_local: Save images locally as well (default: False)
-            master: Enable IMU control for downward detection (default: False)
         """
         self.host = host
         self.port = port
