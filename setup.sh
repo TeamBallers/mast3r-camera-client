@@ -52,7 +52,8 @@ apt install -y \
 python3 \
 python3-pip \
 python3-venv \
-python3-picamera2
+python3-picamera2 \
+libopenblas-dev
 
 # Install camera apps (new or legacy)
 
@@ -67,7 +68,7 @@ fi
 # Create virtual environment as the actual user
 
 echo -e "${YELLOW}[3/4] Creating virtual environment...${NC}"
-sudo -u "$ACTUAL_USER" python3 -m venv "$VENV_PATH"
+sudo -u "$ACTUAL_USER" python3 -m venv --system-site-packages "$VENV_PATH"
 
 # Upgrade pip inside venv
 
@@ -78,7 +79,11 @@ sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install --upgrade pip
 echo -e "${YELLOW}[4/4] Installing Python dependencies...${NC}"
 sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install \
 requests \
-adafruit-circuitpython-lsm6ds
+adafruit-circuitpython-lsm6ds \
+fastapi \
+uvicorn \
+numpy \
+RPi.GPIO
 
 # Ensure ownership of venv
 
