@@ -63,8 +63,7 @@ apt install -y libcamera-apps
 fi
 
 echo -e "${YELLOW}[4/4] Installing Python dependencies...${NC}"
-pip3 install \ 
-requests \
+pip3 install requests \
 adafruit-circuitpython-lsm6ds \
 fastapi \
 uvicorn 
