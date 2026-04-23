@@ -241,7 +241,7 @@ class CameraClient:
                 if self.master:
                     corrected_gyro = tuple(np.array(self.sensor.gyro) - self.gyro_bias)
                     cur_time = time.monotonic()
-                    cameras = self.down_writer.update(self.sensor.acceleration, corrected_gyro, cur_time - self.last_imu_time)
+                    cameras = self.down_writer.update_and_write(self.sensor.acceleration, corrected_gyro, cur_time - self.last_imu_time)
                     self.last_imu_time = cur_time
                     downward = cameras[0]
                 else:
