@@ -20,6 +20,7 @@ import uvicorn
 app = FastAPI(title="Camera API Server")
 
 camera_process = None  
+camera_log_file = None
 
 destination_ip = "100.101.179.51"
 destination_port = 5050
@@ -31,6 +32,8 @@ def run_camera_client ():
     global destination_ip, destination_port, fps, camera_process
 
     log_file = open("/tmp/camera_client.log", "a")  # append so you can tail it
+    global camera_log_file
+    camera_log_file = log_file
 
     cmd = [
         sys.executable,           # use the same python that's running the API
@@ -64,7 +67,7 @@ async def start_task(background_tasks: BackgroundTasks):
 
 @app.post("/stop")
 async def stop_task():
-    global camera_process
+    global camera_process, camera_log_file
     if camera_process is not None:
         camera_process.terminate()
         
