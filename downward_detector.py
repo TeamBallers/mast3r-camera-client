@@ -341,8 +341,8 @@ class CameraDownWriter:
         self.PIN1 = pin1
         self.PIN2 = pin2
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.PIN1, GPIO.OUT)
-        GPIO.setup(self.PIN2, GPIO.OUT)
+        GPIO.setup(self.PIN1, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(self.PIN2, GPIO.OUT, initial=GPIO.LOW)
     
     def update_and_write(self,
         accel: Tuple[float, float, float],
