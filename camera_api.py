@@ -11,7 +11,7 @@ Usage:
 """
 
 import argparse
-import subprocess
+import subprocess, sys, os
 
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -28,10 +28,25 @@ fps = 100
 def run_camera_client ():
     """Run the camera client as a subprocess."""
     print("Starting camera client...")
-    global destination_ip, destination_port, fps
-    cmd = ["python", "camera_client.py", "--host", destination_ip, "--port", str(destination_port), "--fps", str(fps)]
-    global camera_process
-    camera_process = subprocess.Popen(cmd)
+    global destination_ip, destination_port, fps, camera_process
+
+    log_file = open("/tmp/camera_client.log", "a")  # append so you can tail it
+
+    cmd = [
+        sys.executable,           # use the same python that's running the API
+        "camera_client.py",
+        "--host", destination_ip,
+        "--port", str(destination_port),
+        "--fps", str(fps)
+    ]
+
+    camera_process = subprocess.Popen(
+        cmd,
+        stdout=log_file,
+        stderr=log_file,
+        start_new_session=True,    # detach from uvicorn's process group
+        close_fds=True,
+    )
 
 @app.post("/start")
 async def start_task(background_tasks: BackgroundTasks):
@@ -58,6 +73,10 @@ async def stop_task():
         except subprocess.TimeoutExpired:
             camera_process.kill()
         camera_process = None
+
+        if camera_log_file:
+            camera_log_file.close()
+            camera_log_file = None
 
         return JSONResponse(content={
             "status": "success",
