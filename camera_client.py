@@ -152,25 +152,25 @@ class CameraClient:
 
     def capture_and_convert(self) -> tuple[bytes, str]:
         """
-        Capture image from camera as JPEG (server will convert to PNG).
+        Capture image from camera as PNG.
 
         Returns:
-            Tuple of (jpeg_bytes, filename)
+            Tuple of (png_bytes, filename)
         """
-        jpeg_buffer = io.BytesIO()
-        self.camera.capture_file(jpeg_buffer, format='jpeg')
-        jpeg_bytes = jpeg_buffer.getvalue()
+        png_buffer = io.BytesIO()
+        self.camera.capture_file(png_buffer, format='png')
+        png_bytes = png_buffer.getvalue()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        filename = f"raspi_cam_{timestamp}.jpg"
+        filename = f"raspi_cam_{timestamp}.png"
 
-        return jpeg_bytes, filename
+        return png_bytes, filename
 
     # ------------------------------------------------------------------
     # Fire-and-forget upload
     # ------------------------------------------------------------------
 
-    def _do_upload(self, jpeg_bytes: bytes, filename: str) -> bool:
+    def _do_upload(self, png_bytes: bytes, filename: str) -> bool:
         """
         Perform the actual HTTP POST.  Runs in a worker thread — never call
         directly from the main loop.
@@ -179,7 +179,7 @@ class CameraClient:
             True if upload successful, False otherwise
         """
         try:
-            files = {'file': (filename, jpeg_bytes, 'image/jpeg')}
+            files = {'file': (filename, png_bytes, 'image/png')}
             response = requests.post(self.upload_url, files=files, timeout=30)
 
             if response.status_code == 200:
@@ -204,25 +204,25 @@ class CameraClient:
         except Exception as e:
             logger.error(f"Upload raised an exception for {filename}: {e}")
 
-    def upload_image(self, jpeg_bytes: bytes, filename: str):
+    def upload_image(self, png_bytes: bytes, filename: str):
         """
         Submit an upload task to the thread pool and return immediately.
         The upload runs in the background; results are logged via callback.
 
         Args:
-            jpeg_bytes: JPEG image as bytes
+            png_bytes: PNG image as bytes
             filename: Filename for the image
         """
-        future = self._upload_executor.submit(self._do_upload, jpeg_bytes, filename)
+        future = self._upload_executor.submit(self._do_upload, png_bytes, filename)
         future.add_done_callback(lambda f: self._upload_callback(f, filename))
 
     # ------------------------------------------------------------------
 
-    def save_local_copy(self, jpeg_bytes: bytes, filename: str):
+    def save_local_copy(self, png_bytes: bytes, filename: str):
         """Save local copy of image."""
         save_path = self.save_dir / filename
         with open(save_path, 'wb') as f:
-            f.write(jpeg_bytes)
+            f.write(png_bytes)
         logger.debug(f"Saved local copy: {save_path}")
 
     def run(self):
@@ -253,16 +253,16 @@ class CameraClient:
                     continue
 
                 try:
-                    jpeg_bytes, filename = self.capture_and_convert()
+                    png_bytes, filename = self.capture_and_convert()
                     frame_count += 1
 
                     capture_time = time.time() - start_time
 
                     if self.save_local:
-                        self.save_local_copy(jpeg_bytes, filename)
+                        self.save_local_copy(png_bytes, filename)
 
                     # Submit upload — returns immediately, worker runs in background
-                    self.upload_image(jpeg_bytes, filename)
+                    self.upload_image(png_bytes, filename)
 
                     submit_time = time.time() - start_time - capture_time
 
@@ -273,7 +273,7 @@ class CameraClient:
                 elapsed = time.time() - start_time
                 print(
                     f"Frame {frame_count}: capture={capture_time:.3f}s, "
-                    f"submit={submit_time:.4f}s, size={len(jpeg_bytes)}B"
+                    f"submit={submit_time:.4f}s, size={len(png_bytes)}B"
                 )
 
                 if self.csv_writer:
@@ -281,7 +281,7 @@ class CameraClient:
                         frame_count,
                         f"{capture_time:.3f}",
                         f"{submit_time:.4f}",
-                        len(jpeg_bytes),
+                        len(png_bytes),
                     ])
 
                 sleep_time = max(0, self.interval - elapsed)
