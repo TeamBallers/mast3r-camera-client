@@ -336,7 +336,7 @@ class CameraDownDetector:
 
 class CameraDownWriter:
     """Writes results to two GPIO pins for slaves to read"""
-    def __init__(self, detector: CameraDownDetector, pin1=18, pin2=23):
+    def __init__(self, detector: CameraDownDetector, pin1=5, pin2=6):
         self.detector = detector
         self.PIN1 = pin1
         self.PIN2 = pin2

@@ -268,6 +268,7 @@ class CameraClient:
                     cur_time = time.monotonic()
                     cameras = self.down_writer.update_and_write(self.sensor.acceleration, corrected_gyro, cur_time - self.last_imu_time)
                     self.last_imu_time = cur_time
+                    print(f"camera status: {cameras}")
                     downward = cameras[0]
                 else:
                     self.down_reader = CameraDownReader()
