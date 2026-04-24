@@ -1,0 +1,12 @@
+[Unit]
+Description=Camera API Service
+After=network.target
+
+[Service]
+User=raspberrypi
+WorkingDirectory=/home/raspberrypi/mast3r-camera-client
+ExecStart=/home/raspberrypi/.venv/bin/python camera_api.py --dest_ip 100.101.179.51 --dest_port 5050 --fps 100
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

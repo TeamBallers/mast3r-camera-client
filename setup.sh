@@ -42,12 +42,12 @@ echo ""
 
 # Update package list
 
-echo -e "${YELLOW}[1/4] Updating package list...${NC}"
+echo -e "${YELLOW}[1/5] Updating package list...${NC}"
 apt update
 
 # Install system dependencies
 
-echo -e "${YELLOW}[2/4] Installing system dependencies...${NC}"
+echo -e "${YELLOW}[2/5] Installing system dependencies...${NC}"
 apt install -y \
 python3 \
 python3-pip \
@@ -67,7 +67,7 @@ fi
 
 # Create virtual environment as the actual user
 
-echo -e "${YELLOW}[3/4] Creating virtual environment...${NC}"
+echo -e "${YELLOW}[3/5] Creating virtual environment...${NC}"
 sudo -u "$ACTUAL_USER" python3 -m venv --system-site-packages "$VENV_PATH"
 
 # Upgrade pip inside venv
@@ -76,7 +76,7 @@ sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install --upgrade pip
 
 # Install Python dependencies inside venv
 
-echo -e "${YELLOW}[4/4] Installing Python dependencies...${NC}"
+echo -e "${YELLOW}[4/5] Installing Python dependencies...${NC}"
 sudo -u "$ACTUAL_USER" "$VENV_PATH/bin/pip" install \
 requests \
 adafruit-circuitpython-lsm6ds \
@@ -102,6 +102,35 @@ fi
 # Make script executable (as user)
 
 sudo -u "$ACTUAL_USER" chmod +x "$PWD/camera_client.py"
+
+# Install systemd service
+
+echo -e "${YELLOW}[5/5] Installing systemd service...${NC}"
+
+SERVICE_NAME="camera_api.service"
+SERVICE_SRC="$PWD/$SERVICE_NAME"
+SERVICE_DEST="/etc/systemd/system/$SERVICE_NAME"
+
+if [ ! -f "$SERVICE_SRC" ]; then
+    echo -e "${RED}Error: $SERVICE_NAME not found in current directory${NC}"
+    exit 1
+fi
+
+# Copy service file
+cp "$SERVICE_SRC" "$SERVICE_DEST"
+
+# Set proper permissions
+chmod 644 "$SERVICE_DEST"
+
+# Reload systemd
+systemctl daemon-reload
+
+# Enable service at boot
+systemctl enable "$SERVICE_NAME"
+
+echo -e "${GREEN}Service installed and enabled!${NC}"
+echo "You can start it with:"
+echo "  sudo systemctl start $SERVICE_NAME"
 
 echo ""
 echo -e "${GREEN}================================================${NC}"
