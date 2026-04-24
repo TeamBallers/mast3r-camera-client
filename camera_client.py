@@ -11,7 +11,6 @@ Usage:
 """
 
 import argparse
-import csv
 import io
 import logging
 import sys
@@ -25,6 +24,13 @@ import numpy as np
 import board
 from adafruit_lsm6ds.ism330dhcx import ISM330DHCX
 from adafruit_lsm6ds import AccelRange, GyroRange, Rate
+
+from PIL import Image
+try:
+    lanczos = Image.Resampling.LANCZOS
+except AttributeError:
+    lanczos = Image.LANCZOS
+import io
 
 try:
     from picamera2 import Picamera2
@@ -48,11 +54,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def is_pi_4b():
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read()
+            return "Raspberry Pi 4 Model B" in model
+    except FileNotFoundError:
+        return False
 
 class CameraClient:
     """Client for capturing and uploading camera images."""
 
-    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False, csv_file: bool = False, master: bool = False):
+    def __init__(self, host: str, port: int, fps: float = 1.0, save_local: bool = False):
         """
         Initialize camera client.
 
@@ -61,16 +74,18 @@ class CameraClient:
             port: Port number of MASt3R-SLAM server
             fps: Frames per second to capture (default: 1.0)
             save_local: Save images locally as well (default: False)
-            csv_file: Flag to enable CSV file for timing data (default: None)
         """
         self.host = host
         self.port = port
         self.fps = fps
         self.interval = 1.0 / fps
         self.save_local = save_local
-        self.csv_file = csv_file
         self.upload_url = f"http://{host}:{port}/upload"
-        self.master = master
+        self.master = False 
+
+        if is_pi_4b():
+            self.master = True
+            print("Running on Raspberry Pi 4B - enabling master mode with IMU integration")
 
         # Thread pool for fire-and-forget uploads (bounded to avoid unbounded
         # queue growth if the network is slower than the capture rate).
@@ -100,16 +115,6 @@ class CameraClient:
         if self.save_local:
             self.save_dir = Path("captured_images")
             self.save_dir.mkdir(exist_ok=True)
-
-        # Initialize CSV writer if enabled
-        if self.csv_file:
-            self.csv_file_obj = open('timings.csv', 'w', newline='')
-            self.csv_writer = csv.writer(self.csv_file_obj)
-            self.csv_writer.writerow(['frame', 'capture_time', 'submit_time', 'size_bytes'])
-            logger.info("Timing data will be written to timings.csv")
-        else:
-            self.csv_file_obj = None
-            self.csv_writer = None
 
         # Initialize camera
         logger.info("Initializing Raspberry Pi Camera Module 3...")
@@ -150,6 +155,24 @@ class CameraClient:
             logger.error(f"Error: {e}")
             logger.warning("Will attempt to upload anyway...")
 
+    def _downsample(self, jpeg_bytes):
+        """
+        Downsample to 512x288
+        """
+        img = Image.open(io.BytesIO(jpeg_bytes))
+        scale = 512 / img.width
+
+        new_size = (
+            int(img.width * scale),
+            int(img.height * scale),
+        )
+
+        img_small = img.resize(new_size, lanczos)
+
+        buf = io.BytesIO()
+        img_small.save(buf, format='JPEG')
+        return buf.getvalue()
+
     def capture_and_convert(self) -> tuple[bytes, str]:
         """
         Capture image from camera as JPEG (server will convert to PNG).
@@ -160,6 +183,8 @@ class CameraClient:
         jpeg_buffer = io.BytesIO()
         self.camera.capture_file(jpeg_buffer, format='jpeg')
         jpeg_bytes = jpeg_buffer.getvalue()
+
+        jpeg_bytes = self._downsample(jpeg_bytes)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         filename = f"raspi_cam_{timestamp}.jpg"
@@ -241,7 +266,7 @@ class CameraClient:
                 if self.master:
                     corrected_gyro = tuple(np.array(self.sensor.gyro) - self.gyro_bias)
                     cur_time = time.monotonic()
-                    cameras = self.down_writer.update(self.sensor.acceleration, corrected_gyro, cur_time - self.last_imu_time)
+                    cameras = self.down_writer.update_and_write(self.sensor.acceleration, corrected_gyro, cur_time - self.last_imu_time)
                     self.last_imu_time = cur_time
                     downward = cameras[0]
                 else:
@@ -276,14 +301,6 @@ class CameraClient:
                     f"submit={submit_time:.4f}s, size={len(jpeg_bytes)}B"
                 )
 
-                if self.csv_writer:
-                    self.csv_writer.writerow([
-                        frame_count,
-                        f"{capture_time:.3f}",
-                        f"{submit_time:.4f}",
-                        len(jpeg_bytes),
-                    ])
-
                 sleep_time = max(0, self.interval - elapsed)
                 if sleep_time > 0:
                     time.sleep(sleep_time)
@@ -313,9 +330,6 @@ class CameraClient:
             self.camera.stop()
             self.camera.close()
 
-        if self.csv_file_obj:
-            self.csv_file_obj.close()
-
         logger.info("Camera client stopped")
 
 
@@ -337,9 +351,6 @@ Examples:
   # Save local copies
   python camera_client.py --save-local
 
-  # Write timing data to CSV
-  python camera_client.py --csv
-
   # Verbose logging
   python camera_client.py --verbose
         """
@@ -353,12 +364,8 @@ Examples:
                         help='Frames per second to capture (default: 1.0)')
     parser.add_argument('--save-local', action='store_true',
                         help='Save images locally as well')
-    parser.add_argument('--csv', action='store_true',
-                        help='Write timing data to CSV file (timings.csv)')
     parser.add_argument('--verbose', action='store_true',
                         help='Enable verbose logging')
-    parser.add_argument('--master', action='store_true',
-                        help='Enable master mode with downward detection and IMU integration')
 
     args = parser.parse_args()
 
@@ -371,8 +378,6 @@ Examples:
             port=args.port,
             fps=args.fps,
             save_local=args.save_local,
-            csv_file=args.csv,
-            master=args.master, 
         )
         client.run()
     except Exception as e:
