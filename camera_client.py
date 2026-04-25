@@ -264,25 +264,43 @@ class CameraClient:
             while True:
                 start_time = time.time()
 
-                downward = False
+                start_down = False
                 if self.master:
-                    corrected_gyro = tuple(np.array(self.sensor.gyro) - self.gyro_bias)
                     cur_time = time.monotonic()
                     cameras = self.down_writer.read()
                     self.last_imu_time = cur_time
                     print(f"camera status: {cameras}")
-                    downward = cameras[0]
+                    start_down = cameras[0]
                 else:
                     self.down_reader = CameraDownReader()
-                    downward = self.down_reader.read()
+                    start_down = self.down_reader.read()
+
+                if start_down:
+                    logger.info("Camera facing downward at beginning of capture")
 
                 try:
                     jpeg_bytes, filename = self.capture_and_convert()
                     
-                    if downward:
-                        logger.info("Camera facing downward, still uploading for demo")
-                        # filename = "down" + filename
-                        filename = filename.replace(".jpg", "_down.jpg")
+                    end_down = False
+                    if self.master:
+                        cur_time = time.monotonic()
+                        cameras = self.down_writer.read()
+                        self.last_imu_time = cur_time
+                        print(f"camera status: {cameras}")
+                        end_down = cameras[0]
+                    else:
+                        self.down_reader = CameraDownReader()
+                        end_down = self.down_reader.read()
+
+                    if end_down:
+                        logger.info("Camera facing downward at end of capture")
+
+                    if start_down:
+                        # filename = "s_" + filename
+                        filename = filename.replace(".jpg", "_s.jpg")
+                    if end_down:
+                        # filename = "e_" + filename
+                        filename = filename.replace(".jpg", "_e.jpg")
 
                     frame_count += 1
 
