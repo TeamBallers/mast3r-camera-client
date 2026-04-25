@@ -281,7 +281,8 @@ class CameraClient:
                     
                     if downward:
                         logger.info("Camera facing downward, still uploading for demo")
-                        filename = "down" + filename
+                        # filename = "down" + filename
+                        filename = filename.replace(".jpg", "_down.jpg")
 
                     frame_count += 1
 
