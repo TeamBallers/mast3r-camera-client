@@ -245,8 +245,8 @@ class CameraClient:
                     jpeg_bytes, filename, cam_down = self.capture_with_down_check()
 
                     if cam_down:
-                        logger.info("Camera facing down during capture")
-                        filename = filename.replace(".jpg", "_down.jpg")
+                        logger.info("Camera facing down during capture, skipping upload")
+                        continue
 
                     frame_count += 1
                     capture_time = time.time() - start_time
