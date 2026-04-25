@@ -52,6 +52,8 @@ ACCEL_TRUST_TOLERANCE : float  (m/s²)
 import numpy as np
 from typing import Tuple, List
 import RPi.GPIO as GPIO
+import threading
+import time
 
 
 # ---------------------------------------------------------------------------
@@ -323,24 +325,55 @@ class CameraDownDetector:
 
 class CameraDownWriter:
     """Writes results to two GPIO pins for slaves to read"""
-    def __init__(self, detector: CameraDownDetector, pin1=5, pin2=6):
+    def __init__(self, detector: CameraDownDetector, sensor, gyro_bias, pin1=5, pin2=6, poll_hz=200):
         self.detector = detector
+        self.sensor = sensor
+        self.gyro_bias = gyro_bias
         self.PIN1 = pin1
         self.PIN2 = pin2
+        self.poll_hz = poll_hz
+        self._cameras = [False, False, False]
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.PIN1, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(self.PIN2, GPIO.OUT, initial=GPIO.LOW)
-    
-    def update_and_write(self,
-        accel: Tuple[float, float, float],
-        gyro: Tuple[float, float, float],
-        dt: float,):
-        cameras = self.detector.update(accel, gyro, dt)
 
-        GPIO.output(self.PIN1, GPIO.HIGH if cameras[1] else GPIO.LOW)
-        GPIO.output(self.PIN2, GPIO.HIGH if cameras[2] else GPIO.LOW)
-        
-        return cameras
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self):
+        interval = 1.0 / self.poll_hz
+        last_time = time.monotonic()
+        while not self._stop_event.is_set():
+            now = time.monotonic()
+            dt = now - last_time
+            last_time = now
+
+            accel = self.sensor.acceleration
+            corrected_gyro = tuple(np.array(self.sensor.gyro) - self.gyro_bias)
+            cameras = self.detector.update(accel, corrected_gyro, dt)
+
+            GPIO.output(self.PIN1, GPIO.HIGH if cameras[1] else GPIO.LOW)
+            GPIO.output(self.PIN2, GPIO.HIGH if cameras[2] else GPIO.LOW)
+
+            with self._lock:
+                self._cameras = list(cameras)
+
+            elapsed = time.monotonic() - now
+            sleep_time = interval - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+    def read(self):
+        """Read the latest camera down status from the main thread."""
+        with self._lock:
+            return list(self._cameras)
+
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join()
 
 
 class CameraDownReader:

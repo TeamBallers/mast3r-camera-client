@@ -97,8 +97,6 @@ class CameraClient:
                 accel_correction_gain=0.02,
                 accel_trust_tolerance=1.0,
             )
-            self.down_writer = CameraDownWriter(self.down_detector, 5, 6)
-
             i2c = board.I2C()
             self.sensor = ISM330DHCX(i2c)
 
@@ -108,6 +106,10 @@ class CameraClient:
             self.down_detector.initialize_from_stationary(self.sensor.acceleration)
             self.last_imu_time = time.monotonic()
             self.gyro_bias = self.down_detector.calibrate_gyro_bias(self.sensor)
+
+            self.down_writer = CameraDownWriter(
+                self.down_detector, self.sensor, self.gyro_bias, pin1=5, pin2=6, poll_hz=200
+            )
         else:
             self.down_reader = CameraDownReader()
 
@@ -266,7 +268,7 @@ class CameraClient:
                 if self.master:
                     corrected_gyro = tuple(np.array(self.sensor.gyro) - self.gyro_bias)
                     cur_time = time.monotonic()
-                    cameras = self.down_writer.update_and_write(self.sensor.acceleration, corrected_gyro, cur_time - self.last_imu_time)
+                    cameras = self.down_writer.read()
                     self.last_imu_time = cur_time
                     print(f"camera status: {cameras}")
                     downward = cameras[0]
@@ -321,6 +323,8 @@ class CameraClient:
     def cleanup(self):
         """Clean up camera and thread-pool resources."""
         logger.info("Cleaning up...")
+
+        self.down_writer.stop()
 
         # Drain any in-flight uploads before closing everything else.
         logger.info("Waiting for in-flight uploads to finish...")
