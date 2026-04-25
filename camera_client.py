@@ -276,12 +276,13 @@ class CameraClient:
                     self.down_reader = CameraDownReader()
                     downward = self.down_reader.read()
 
-                if downward:
-                    logger.info("Camera facing downward, skipping capture")
-                    continue
-
                 try:
                     jpeg_bytes, filename = self.capture_and_convert()
+                    
+                    if downward:
+                        logger.info("Camera facing downward, still uploading for demo")
+                        filename = "down" + filename
+
                     frame_count += 1
 
                     capture_time = time.time() - start_time
