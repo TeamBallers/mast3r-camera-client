@@ -25,8 +25,12 @@ close enough to world-down = (0, 0, -1).
 Usage
 -----
 1. Instantiate CameraDownDetector once (before the polling loop).
-2. Call detector.update(accel, gyro, dt) each polling iteration.
-3. Read detector.cameras_facing_down for the result.
+2. Instantiate DownwardFrameFilter once, wrapping the detector.
+3. Call filter.update(accel, gyro, dt) each polling iteration.
+4. Read filter.cameras_facing_down for the temporally-stable result.
+
+   Alternatively, use CameraDownDetector directly (without the filter) and
+   read detector.cameras_facing_down for raw per-frame results.
 
 Configuration
 -------------
@@ -47,10 +51,16 @@ ACCEL_TRUST_TOLERANCE : float  (m/s²)
     Accelerometer correction is only applied when
     | ||accel|| - g | < ACCEL_TRUST_TOLERANCE.
     Keeps correction disabled during strong linear / centripetal acceleration.
+
+SUSTAINED_FRAMES_REQUIRED : int
+    Number of consecutive frames a camera must be facing down before
+    DownwardFrameFilter reports it as truly facing down.  Raising this value
+    reduces false positives at the cost of increased detection latency.
 """
 
 import numpy as np
 from typing import Tuple, List
+import RPi.GPIO as GPIO
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +86,10 @@ ACCEL_TRUST_TOLERANCE: float = 1.0    # m/s² — how close to 9.81 to trust acc
 
 # Standard gravity
 G: float = 9.80665  # m/s²
+
+# Number of consecutive frames a camera must face down before
+# DownwardFrameFilter reports it as truly facing down.
+SUSTAINED_FRAMES_REQUIRED: int = 5
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +176,7 @@ def _slerp_rotation(R_current: np.ndarray,
 
 
 # ---------------------------------------------------------------------------
-# Main class
+# Main detector class
 # ---------------------------------------------------------------------------
 
 class CameraDownDetector:
@@ -294,7 +308,7 @@ class CameraDownDetector:
             self.cameras_facing_down[i] = dot >= self._threshold_cos
 
         return self.cameras_facing_down
-    
+
     def calibrate_gyro_bias(self, imu, num_samples=500):
         """
         Call this while the ball is completely stationary at startup.
