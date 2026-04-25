@@ -275,7 +275,7 @@ class CameraClient:
                     downward = self.down_reader.read()
 
                 if downward:
-                    print("Camera facing downward, skipping capture")
+                    logger.info("Camera facing downward, skipping capture")
                     continue
 
                 try:

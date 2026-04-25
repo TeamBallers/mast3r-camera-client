@@ -71,9 +71,9 @@ import RPi.GPIO as GPIO
 # Default: 3 cameras evenly spaced (120° apart) in the IMU XY-plane.
 # Replace with your measured vectors; they do NOT need to lie on a major plane.
 CAMERA_DIRECTIONS_BODY: List[Tuple[float, float, float]] = [
-    (0.005076, 0.997434, 0.071414),  # Camera 0
-    (0.434201, -0.586046, 0.684120),  # Camera 1
-    (-0.434202, -0.400043, -0.807115),  # Camera 2
+    (-0.000235, 0.999222, 0.039429),  # Camera 0
+    (0.454040, -0.548987, 0.701755),  # Camera 1
+    (-0.411323, -0.433764, -0.801662),  # Camera 2
 ]
 
 # Angular tolerance: a camera is "facing down" if it is within this many
