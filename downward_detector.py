@@ -51,6 +51,7 @@ ACCEL_TRUST_TOLERANCE : float  (m/s²)
 
 import numpy as np
 from typing import Tuple, List
+import RPi.GPIO as GPIO
 
 
 # ---------------------------------------------------------------------------
