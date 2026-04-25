@@ -60,8 +60,8 @@ logger = logging.getLogger(__name__)
 # LogSampler   → query(position=0.5)  — state at the midpoint of the capture
 # RatioSampler → query(threshold=0.5) — majority vote over the whole capture
 # ---------------------------------------------------------------------------
-SAMPLER_CLASS        = LogSampler           # ← swap to RatioSampler here
-SAMPLER_QUERY_KWARGS = {"position": 0.5}    # ← swap to {"threshold": 0.5}
+SAMPLER_CLASS        = RatioSampler           # ← swap to RatioSampler here
+SAMPLER_QUERY_KWARGS = {"threshold": 0.6}    # ← swap to {"threshold": 0.5}
 # ---------------------------------------------------------------------------
 
 
@@ -93,13 +93,13 @@ class CameraClient:
         if self.master:
             logger.info("Master mode (Pi 4B) — running IMU, writing GPIO")
             self.down_detector = CameraDownDetector(
-                facing_down_threshold_deg=50.0,
+                facing_down_threshold_deg=55.0,
                 accel_correction_gain=0.02,
                 accel_trust_tolerance=1.0,
             )
             i2c = board.I2C()
             self.sensor = ISM330DHCX(i2c)
-            self.sensor.gyro_range = GyroRange.RANGE_4000_DPS
+            self.sensor.gyro_range = GyroRange.RANGE_2000_DPS
             self.sensor.accelerometer_range = AccelRange.RANGE_2G
             self.down_detector.initialize_from_stationary(self.sensor.acceleration)
             self.gyro_bias = self.down_detector.calibrate_gyro_bias(self.sensor)
