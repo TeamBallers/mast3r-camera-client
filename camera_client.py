@@ -132,7 +132,7 @@ class CameraClient:
                 buffer_count=2,
             )
             self.camera.configure(config)
-            self.camera.controls.ExposureTime = 4000
+            self.camera.controls.ExposureTime = 2500
             self.camera.start()
             time.sleep(2)
             logger.info(f"Camera ready — resolution {config['main']['size']}")
